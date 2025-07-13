@@ -1,0 +1,1907 @@
+import React, { useState, useEffect, createContext, useContext, useCallback } from 'react';
+import { initializeApp } from 'firebase/app';
+import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
+import { getFirestore, collection, doc, setDoc, getDoc, addDoc, onSnapshot, query, where, deleteDoc, updateDoc, getDocs } from 'firebase/firestore';
+
+// --- Firebase Context ---
+const FirebaseContext = createContext(null);
+
+// --- Sample Card Data (Expanded up to OP-11) ---
+const sampleCards = [
+  // OP-01: Romance Dawn
+  { id: "OP01-001", name: "Monkey D. Luffy", type: "Leader", colors: ["Red"], cost: 0, power: 5000, counter: 0, attribute: "Strike", effect_text: "[Your Turn] (Once Per Turn) When you gain 1 DON!!, give up to 1 of your Characters +1000 power during this turn.", set_id: "OP01", set_name: "Romance Dawn", rarity: "L", image_url: "https://placehold.co/150x200/ff0000/ffffff?text=OP01-001", keywords: [] },
+  { id: "OP01-002", name: "Roronoa Zoro", type: "Character", colors: ["Red"], cost: 3, power: 5000, counter: 1000, attribute: "Slash", effect_text: "[Rush] (This card can attack on the turn it is played.)", set_id: "OP01", set_name: "Romance Dawn", rarity: "SR", image_url: "https://placehold.co/150x200/00ff00/ffffff?text=OP01-002", keywords: ["Rush"] },
+  { id: "OP01-013", name: "Nami", type: "Character", colors: ["Red"], cost: 1, power: 2000, counter: 1000, attribute: "Special", effect_text: "[On Play] Look at 3 cards from the top of your deck; reveal up to 1 [Straw Hat Crew] type card other than [Nami] and add it to your hand. Then, place the rest at the bottom of your deck in any order.", set_id: "OP01", set_name: "Romance Dawn", rarity: "C", image_url: "https://placehold.co/150x200/0000ff/ffffff?text=OP01-013", keywords: [] },
+  { id: "OP01-016", name: "Gum-Gum Jet Pistol", type: "Event", colors: ["Red"], cost: 2, power: 0, counter: 0, attribute: "", effect_text: "[Main] You may trash 1 card from your hand: K.O. up to 1 of your opponent's Characters with 3000 power or less.", set_id: "OP01", set_name: "Romance Dawn", rarity: "UC", image_url: "https://placehold.co/150x200/ff00ff/ffffff?text=OP01-016", keywords: [] },
+  { id: "OP01-022", name: "Kaido", type: "Leader", colors: ["Purple"], cost: 0, power: 5000, counter: 0, attribute: "Strike", effect_text: "[DON!! x1] [Activate: Main] (Once Per Turn) Give up to 1 of your Characters -1000 power during this turn.", set_id: "OP01", set_name: "Romance Dawn", rarity: "L", image_url: "https://placehold.co/150x200/800080/ffffff?text=OP01-022", keywords: [] },
+  { id: "OP01-070", name: "Trafalgar Law", type: "Character", colors: ["Green"], cost: 5, power: 6000, counter: 1000, attribute: "Slash", effect_text: "[On Play] You may return 1 of your Characters to your hand: Play up to 1 Character card with a cost of 3 or less from your hand.", set_id: "OP01", set_name: "Romance Dawn", rarity: "SR", image_url: "https://placehold.co/150x200/008000/ffffff?text=OP01-070", keywords: [] },
+  { id: "OP01-120", name: "Shanks", type: "Character", colors: ["Red"], cost: 9, power: 10000, counter: 0, attribute: "Slash", effect_text: "[Rush] (This card can attack on the turn it is played.)", set_id: "OP01", set_name: "Romance Dawn", rarity: "SEC", image_url: "https://placehold.co/150x200/b22222/ffffff?text=OP01-120", keywords: ["Rush"] },
+
+  // OP-02: Paramount War
+  { id: "OP02-001", name: "Edward.Newgate", type: "Leader", colors: ["Red"], cost: 0, power: 5000, counter: 0, attribute: "Special", effect_text: "[Your Turn] (Once Per Turn) When you gain 1 DON!!, give up to 1 of your Characters +1000 power during this turn.", set_id: "OP02", set_name: "Paramount War", rarity: "L", image_url: "https://placehold.co/150x200/ff4500/ffffff?text=OP02-001", keywords: [] },
+  { id: "OP02-013", name: "Marco", type: "Character", colors: ["Red"], cost: 4, power: 5000, counter: 1000, attribute: "Special", effect_text: "[Blocker] (After your opponent declares an attack, you may rest this card to change the target of the attack to this card.)", set_id: "OP02", set_name: "Paramount War", rarity: "R", image_url: "https://placehold.co/150x200/ffa500/ffffff?text=OP02-013", keywords: ["Blocker"] },
+  { id: "OP02-096", name: "Kuzan", type: "Character", colors: ["Blue"], cost: 5, power: 6000, counter: 1000, attribute: "Special", effect_text: "[On Play] You may trash 1 card from your hand: Return up to 1 of your opponent's Characters with a cost of 4 or less to their hand.", set_id: "OP02", set_name: "Paramount War", rarity: "SR", image_url: "https://placehold.co/150x200/1e90ff/ffffff?text=OP02-096", keywords: [] },
+  { id: "OP02-121", name: "Sengoku", type: "Leader", colors: ["Black"], cost: 0, power: 5000, counter: 0, attribute: "Special", effect_text: "[Activate: Main] (Once Per Turn) If your Leader has the {Navy} type, give up to 1 of your Characters +1000 power during this turn.", set_id: "OP02", set_name: "Paramount War", rarity: "L", image_url: "https://placehold.co/150x200/000000/ffffff?text=OP02-121", keywords: [] },
+
+  // OP-03: Pillars of Strength
+  { id: "OP03-001", name: "Donquixote Doflamingo", type: "Leader", colors: ["Blue"], cost: 0, power: 5000, counter: 0, attribute: "Special", effect_text: "[Your Turn] (Once Per Turn) When you gain 1 DON!!, give up to 1 of your Characters +1000 power during this turn.", set_id: "OP03", set_name: "Pillars of Strength", rarity: "L", image_url: "https://placehold.co/150x200/00bfff/ffffff?text=OP03-001", keywords: [] },
+  { id: "OP03-040", name: "Uta", type: "Character", colors: ["Yellow"], cost: 4, power: 5000, counter: 1000, attribute: "Special", effect_text: "[On Play] Look at 5 cards from the top of your deck; reveal up to 1 [Film] type Character card and add it to your hand. Then, place the rest at the bottom of your deck in any order.", set_id: "OP03", set_name: "Pillars of Strength", rarity: "R", image_url: "https://placehold.co/150x200/ffd700/ffffff?text=OP03-040", keywords: [] },
+  { id: "OP03-114", name: "Charlotte Katakuri", type: "Character", colors: ["Yellow"], cost: 8, power: 8000, counter: 1000, attribute: "Special", effect_text: "[On Play] You may trash 1 card from your hand: Place up to 1 of your opponent's Characters with a cost of 6 or less at the top or bottom of their deck.", set_id: "OP03", set_name: "Pillars of Strength", rarity: "SR", image_url: "https://placehold.co/150x200/daa520/ffffff?text=OP03-114", keywords: [] },
+  { id: "OP03-120", name: "Gecko Moria", type: "Leader", colors: ["Black"], cost: 0, power: 5000, counter: 0, attribute: "Special", effect_text: "[Activate: Main] (Once Per Turn) You may trash 1 card from your hand: Play up to 1 Character card with a cost of 4 or less from your trash.", set_id: "OP03", set_name: "Pillars of Strength", rarity: "L", image_url: "https://placehold.co/150x200/2f4f4f/ffffff?text=OP03-120", keywords: [] },
+
+  // OP-04: Kingdoms of Intrigue
+  { id: "OP04-001", name: "Crocodile", type: "Leader", colors: ["Green"], cost: 0, power: 5000, counter: 0, attribute: "Special", effect_text: "[Your Turn] (Once Per Turn) When you gain 1 DON!!, give up to 1 of your Characters +1000 power during this turn.", set_id: "OP04", set_name: "Kingdoms of Intrigue", rarity: "L", image_url: "https://placehold.co/150x200/32cd32/ffffff?text=OP04-001", keywords: [] },
+  { id: "OP04-023", name: "Sabo", type: "Character", colors: ["Black"], cost: 4, power: 5000, counter: 1000, attribute: "Special", effect_text: "[Blocker] (After your opponent declares an attack, you may rest this card to change the target of the attack to this card.)", set_id: "OP04", set_name: "Kingdoms of Intrigue", rarity: "R", image_url: "https://placehold.co/150x200/000000/ffffff?text=OP04-023", keywords: ["Blocker"] },
+  { id: "OP04-083", name: "Rob Lucci", type: "Character", colors: ["Black"], cost: 6, power: 7000, counter: 1000, attribute: "Strike", effect_text: "[On Play] You may trash 1 card from your hand: K.O. up to 1 of your opponent's Characters with 4000 power or less.", set_id: "OP04", set_name: "Kingdoms of Intrigue", rarity: "SR", image_url: "https://placehold.co/150x200/4b0082/ffffff?text=OP04-083", keywords: [] },
+  { id: "OP04-112", name: "Issho", type: "Leader", colors: ["Purple"], cost: 0, power: 5000, counter: 0, attribute: "Special", effect_text: "[Activate: Main] (Once Per Turn) You may trash 1 card from your hand: Give up to 1 of your opponent's Characters -1000 power during this turn.", set_id: "OP04", set_name: "Kingdoms of Intrigue", rarity: "L", image_url: "https://placehold.co/150x200/800080/ffffff?text=OP04-112", keywords: [] },
+
+  // OP-05: Awakening of the New Era
+  { id: "OP05-001", name: "Monkey D. Luffy", type: "Leader", colors: ["Red", "Green"], cost: 0, power: 5000, counter: 0, attribute: "Strike", effect_text: "[Your Turn] (Once Per Turn) When you gain 1 DON!!, give up to 1 of your Characters +1000 power during this turn.", set_id: "OP05", set_name: "Awakening of the New Era", rarity: "L", image_url: "https://placehold.co/150x200/8b0000/ffffff?text=OP05-001", keywords: [] },
+  { id: "OP05-060", name: "Eustass Kid", type: "Character", colors: ["Green"], cost: 8, power: 8000, counter: 1000, attribute: "Strike", effect_text: "[Blocker] (After your opponent declares an attack, you may rest this card to change the target of the attack to this card.) [On Play] You may trash 1 card from your hand: Play up to 1 Character card with a cost of 5 or less from your hand.", set_id: "OP05", set_name: "Awakening of the New Era", rarity: "SR", image_url: "https://placehold.co/150x200/006400/ffffff?text=OP05-060", keywords: ["Blocker"] },
+  { id: "OP05-074", name: "Nico Robin", type: "Character", colors: ["Blue"], cost: 4, power: 5000, counter: 1000, attribute: "Special", effect_text: "[On Play] Return up to 1 of your opponent's Characters with a cost of 3 or less to their hand.", set_id: "OP05", set_name: "Awakening of the New Era", rarity: "R", image_url: "https://placehold.co/150x200/1e90ff/ffffff?text=OP05-074", keywords: [] },
+  { id: "OP05-119", name: "Kaido", type: "Character", colors: ["Purple"], cost: 10, power: 12000, counter: 0, attribute: "Strike", effect_text: "[Banish] (When this card deals damage, trash the top card of your opponent's Life area instead of placing it in their hand.)", set_id: "OP05", set_name: "Awakening of the New Era", rarity: "SEC", image_url: "https://placehold.co/150x200/800080/ffffff?text=OP05-119", keywords: ["Banish"] },
+
+  // OP-06: Wings of the Captain
+  { id: "OP06-001", name: "Yamato", type: "Leader", colors: ["Yellow", "Blue"], cost: 0, power: 5000, counter: 0, attribute: "Special", effect_text: "[Your Turn] (Once Per Turn) When you gain 1 DON!!, give up to 1 of your Characters +1000 power during this turn.", set_id: "OP06", set_name: "Wings of the Captain", rarity: "L", image_url: "https://placehold.co/150x200/ffd700/0000ff?text=OP06-001", keywords: [] },
+  { id: "OP06-022", name: "Gecko Moria", type: "Character", colors: ["Black"], cost: 7, power: 7000, counter: 1000, attribute: "Special", effect_text: "[On Play] You may trash 1 card from your hand: Play up to 2 Character cards with a cost of 4 or less from your trash.", set_id: "OP06", set_name: "Wings of the Captain", rarity: "SR", image_url: "https://placehold.co/150x200/2f4f4f/ffffff?text=OP06-022", keywords: [] },
+  { id: "OP06-058", name: "Sanji", type: "Character", colors: ["Green"], cost: 3, power: 4000, counter: 1000, attribute: "Strike", effect_text: "[Blocker] (After your opponent declares an attack, you may rest this card to change the target of the attack to this card.)", set_id: "OP06", set_name: "Wings of the Captain", rarity: "C", image_url: "https://placehold.co/150x200/008000/ffffff?text=OP06-058", keywords: ["Blocker"] },
+  { id: "OP06-118", name: "Roronoa Zoro", type: "Character", colors: ["Red"], cost: 9, power: 9000, counter: 0, attribute: "Slash", effect_text: "[Rush] (This card can attack on the turn it is played.)", set_id: "OP06", set_name: "Wings of the Captain", rarity: "SEC", image_url: "https://placehold.co/150x200/ff0000/ffffff?text=OP06-118", keywords: ["Rush"] },
+
+  // OP-07: 500 Years in the Future
+  { id: "OP07-001", name: "Uta", type: "Leader", colors: ["Red", "Yellow"], cost: 0, power: 5000, counter: 0, attribute: "Special", effect_text: "[Your Turn] (Once Per Turn) When you gain 1 DON!!, give up to 1 of your Characters +1000 power during this turn.", set_id: "OP07", set_name: "500 Years in the Future", rarity: "L", image_url: "https://placehold.co/150x200/8b4513/ffffff?text=OP07-001", keywords: [] },
+  { id: "OP07-040", name: "Shanks", type: "Character", colors: ["Red"], cost: 9, power: 10000, counter: 0, attribute: "Slash", effect_text: "[Rush] (This card can attack on the turn it is played.)", set_id: "OP07", set_name: "500 Years in the Future", rarity: "SEC", image_url: "https://placehold.co/150x200/b22222/ffffff?text=OP07-040", keywords: ["Rush"] },
+  { id: "OP07-054", name: "Jewelry Bonney", type: "Character", colors: ["Green"], cost: 2, power: 3000, counter: 1000, attribute: "Special", effect_text: "[On Play] Look at 5 cards from the top of your deck; reveal up to 1 [Supernovas] type Character card and add it to your hand. Then, place the rest at the bottom of your deck in any order.", set_id: "OP07", set_name: "500 Years in the Future", rarity: "R", image_url: "https://placehold.co/150x200/008000/ffffff?text=OP07-054", keywords: [] },
+  { id: "OP07-085", name: "Stussy", type: "Character", colors: ["Black"], cost: 4, power: 5000, counter: 1000, attribute: "Special", effect_text: "[Blocker] (After your opponent declares an attack, you may rest this card to change the target of the attack to this card.)", set_id: "OP07", set_name: "500 Years in the Future", rarity: "R", image_url: "https://placehold.co/150x200/000000/ffffff?text=OP07-085", keywords: ["Blocker"] },
+
+  // OP-08: Two Legends
+  { id: "OP08-001", name: "Tony Tony Chopper", type: "Leader", colors: ["Red", "Blue"], cost: 0, power: 5000, counter: 0, attribute: "Special", effect_text: "[Your Turn] (Once Per Turn) When you gain 1 DON!!, give up to 1 of your Characters +1000 power during this turn.", set_id: "OP08", set_name: "Two Legends", rarity: "L", image_url: "https://placehold.co/150x200/ff0000/0000ff?text=OP08-001", keywords: [] },
+  { id: "OP08-043", name: "Edward.Newgate", type: "Character", colors: ["Red"], cost: 7, power: 8000, counter: 1000, attribute: "Special", effect_text: "[On Play] You may trash 1 card from your hand: K.O. up to 1 of your opponent's Characters with 5000 power or less.", set_id: "OP08", set_name: "Two Legends", rarity: "SR", image_url: "https://placehold.co/150x200/ff4500/ffffff?text=OP08-043", keywords: [] },
+  { id: "OP08-079", name: "Kaidou", type: "Character", colors: ["Purple"], cost: 7, power: 8000, counter: 1000, attribute: "Strike", effect_text: "[On Play] You may trash 1 card from your hand: Give up to 1 of your opponent's Characters -2000 power during this turn.", set_id: "OP08", set_name: "Two Legends", rarity: "R", image_url: "https://placehold.co/150x200/800080/ffffff?text=OP08-079", keywords: [] },
+  { id: "OP08-118", name: "Silvers Rayleigh", type: "Character", colors: ["Black"], cost: 9, power: 10000, counter: 0, attribute: "Slash", effect_text: "[Rush] (This card can attack on the turn it is played.)", set_id: "OP08", set_name: "Two Legends", rarity: "SEC", image_url: "https://placehold.co/150x200/000000/ffffff?text=OP08-118", keywords: ["Rush"] },
+
+  // OP-09: Emperors in the New World
+  { id: "OP09-001", name: "Monkey D. Luffy", type: "Leader", colors: ["Red"], cost: 0, power: 5000, counter: 0, attribute: "Strike", effect_text: "[Your Turn] (Once Per Turn) When you gain 1 DON!!, give up to 1 of your Characters +1000 power during this turn.", set_id: "OP09", set_name: "Emperors in the New World", rarity: "L", image_url: "https://placehold.co/150x200/ff0000/ffffff?text=OP09-001", keywords: [] },
+  { id: "OP09-042", name: "Buggy", type: "Character", colors: ["Blue"], cost: 1, power: 2000, counter: 1000, attribute: "Special", effect_text: "[On Play] Look at 3 cards from the top of your deck; reveal up to 1 [Buggy Pirates] type card and add it to your hand. Then, place the rest at the bottom of your deck in any order.", set_id: "OP09", set_name: "Emperors in the New World", rarity: "C", image_url: "https://placehold.co/150x200/1e90ff/ffffff?text=OP09-042", keywords: [] },
+  { id: "OP09-093", name: "Marshall D. Teach", type: "Character", colors: ["Black"], cost: 7, power: 8000, counter: 1000, attribute: "Special", effect_text: "[On Play] You may trash 1 card from your hand: K.O. up to 1 of your opponent's Characters with 6000 power or less.", set_id: "OP09", set_name: "Emperors in the New World", rarity: "SR", image_url: "https://placehold.co/150x200/000000/ffffff?text=OP09-093", keywords: [] },
+  { id: "OP09-118", name: "Gol D. Roger", type: "Character", colors: ["Red"], cost: 10, power: 12000, counter: 0, attribute: "Slash", effect_text: "[On Play] K.O. up to 1 of your opponent's Characters with 8000 power or less.", set_id: "OP09", set_name: "Emperors in the New World", rarity: "SEC", image_url: "https://placehold.co/150x200/ff0000/ffffff?text=OP09-118", keywords: [] },
+
+  // OP-10: Royal Blood
+  { id: "OP10-001", name: "Smoker", type: "Leader", colors: ["Black"], cost: 0, power: 5000, counter: 0, attribute: "Special", effect_text: "[Your Turn] (Once Per Turn) When you gain 1 DON!!, give up to 1 of your Characters +1000 power during this turn.", set_id: "OP10", set_name: "Royal Blood", rarity: "L", image_url: "https://placehold.co/150x200/000000/ffffff?text=OP10-001", keywords: [] },
+  { id: "OP10-022", name: "Trafalgar Law", type: "Character", colors: ["Blue"], cost: 4, power: 5000, counter: 1000, attribute: "Slash", effect_text: "[Blocker] (After your opponent declares an attack, you may rest this card to change the target of the attack to this card.)", set_id: "OP10", set_name: "Royal Blood", rarity: "R", image_url: "https://placehold.co/150x200/1e90ff/ffffff?text=OP10-022", keywords: ["Blocker"] },
+  { id: "OP10-062", name: "Charlotte Linlin", type: "Character", colors: ["Yellow"], cost: 9, power: 10000, counter: 0, attribute: "Special", effect_text: "[On Play] You may trash 1 card from your hand: Add up to 1 card from your Life area to your hand.", set_id: "OP10", set_name: "Royal Blood", rarity: "SR", image_url: "https://placehold.co/150x200/ffd700/ffffff?text=OP10-062", keywords: [] },
+  { id: "OP10-118", name: "Monkey D. Luffy", type: "Character", colors: ["Red", "Yellow"], cost: 8, power: 9000, counter: 1000, attribute: "Strike", effect_text: "[On Play] K.O. up to 1 of your opponent's Characters with 7000 power or less.", set_id: "OP10", set_name: "Royal Blood", rarity: "SEC", image_url: "https://placehold.co/150x200/ff0000/ffd700?text=OP10-118", keywords: [] },
+
+  // OP-11: A Fist of Divine Speed
+  { id: "OP11-001", name: "Koby", type: "Leader", colors: ["Red", "Black"], cost: 0, power: 5000, counter: 0, attribute: "Special", effect_text: "[Your Turn] (Once Per Turn) When you gain 1 DON!!, give up to 1 of your Characters +1000 power during this turn.", set_id: "OP11", set_name: "A Fist of Divine Speed", rarity: "L", image_url: "https://placehold.co/150x200/ff0000/000000?text=OP11-001", keywords: [] },
+  { id: "OP11-040", name: "Monkey D. Luffy", type: "Character", colors: ["Red"], cost: 5, power: 6000, counter: 1000, attribute: "Strike", effect_text: "[On Play] You may trash 1 card from your hand: K.O. up to 1 of your opponent's Characters with 4000 power or less.", set_id: "OP11", set_name: "A Fist of Divine Speed", rarity: "SR", image_url: "https://placehold.co/150x200/ff0000/ffffff?text=OP11-040", keywords: [] },
+  { id: "OP11-054", name: "Nami", type: "Character", colors: ["Blue"], cost: 3, power: 4000, counter: 1000, attribute: "Special", effect_text: "[On Play] Look at 5 cards from the top of your deck; reveal up to 1 [Straw Hat Crew] type card and add it to your hand. Then, place the rest at the bottom of your deck in any order.", set_id: "OP11", set_name: "A Fist of Divine Speed", rarity: "R", image_url: "https://placehold.co/150x200/1e90ff/ffffff?text=OP11-054", keywords: [] },
+  { id: "OP11-095", name: "Monkey D. Garp", type: "Character", colors: ["Black"], cost: 6, power: 7000, counter: 1000, attribute: "Strike", effect_text: "[Blocker] (After your opponent declares an attack, you may rest this card to change the target of the attack to this card.)", set_id: "OP11", set_name: "A Fist of Divine Speed", rarity: "SR", image_url: "https://placehold.co/150x200/000000/ffffff?text=OP11-095", keywords: ["Blocker"] },
+  { id: "OP11-119", name: "Koby", type: "Character", colors: ["Black"], cost: 10, power: 12000, counter: 0, attribute: "Special", effect_text: "[On Play] K.O. up to 1 of your opponent's Characters with 8000 power or less.", set_id: "OP11", set_name: "A Fist of Divine Speed", rarity: "SEC", image_url: "https://placehold.co/150x200/000000/ffffff?text=OP11-119", keywords: [] },
+
+  // DON!! Card
+  { id: "DON-001", name: "DON!!", type: "DON!!", colors: [], cost: 0, power: 0, counter: 0, attribute: "", effect_text: "DON!! cards are used to power up your Leader or Characters.", set_id: "DON", set_name: "DON!! Card", rarity: "C", image_url: "https://placehold.co/150x200/ffd700/000000?text=DON!!", keywords: [] }
+];
+
+// --- Utility Functions ---
+// These now refer to the hardcoded sampleCards array
+const getCardById = (id) => sampleCards.find(card => card.id === id);
+const getLeaderCards = () => sampleCards.filter(card => card.type === 'Leader');
+
+// Function to generate a unique ID (simple UUID for client-side, Firestore generates for docs)
+const generateUUID = () => crypto.randomUUID();
+
+// --- Modal Component ---
+const Modal = ({ isOpen, onClose, children, title }) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto relative">
+        <h2 className="text-2xl font-bold mb-4 text-gray-800">{title}</h2>
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 text-gray-600 hover:text-gray-900 text-3xl font-bold"
+        >
+          &times;
+        </button>
+        {children}
+      </div>
+    </div>
+  );
+};
+
+// --- Card Picker Modal Component ---
+const CardPickerModal = ({ isOpen, onClose, onSelectCard, selectedCards = {} }) => {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filters, setFilters] = useState({ type: '', color: '', rarity: '' });
+
+  const filteredCards = sampleCards.filter(card => {
+    const matchesSearch = card.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          card.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          card.effect_text.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesType = filters.type ? card.type === filters.type : true;
+    const matchesColor = filters.color ? card.colors.includes(filters.color) : true;
+    const matchesRarity = filters.rarity ? card.rarity === filters.rarity : true;
+    return matchesSearch && matchesType && matchesColor && matchesRarity;
+  });
+
+  const handleFilterChange = (e) => {
+    setFilters({ ...filters, [e.target.name]: e.target.value });
+  };
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Select Cards">
+      <div className="mb-4">
+        <input
+          type="text"
+          placeholder="Search cards..."
+          className="p-2 border rounded-md w-full mb-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+        />
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <select name="type" value={filters.type} onChange={handleFilterChange} className="p-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <option value="">All Types</option>
+            <option value="Leader">Leader</option>
+            <option value="Character">Character</option>
+            <option value="Event">Event</option>
+            <option value="Stage">Stage</option>
+            <option value="DON!!">DON!!</option>
+          </select>
+          <select name="color" value={filters.color} onChange={handleFilterChange} className="p-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <option value="">All Colors</option>
+            <option value="Red">Red</option>
+            <option value="Green">Green</option>
+            <option value="Blue">Blue</option>
+            <option value="Purple">Purple</option>
+            <option value="Black">Black</option>
+            <option value="Yellow">Yellow</option>
+          </select>
+          <select name="rarity" value={filters.rarity} onChange={handleFilterChange} className="p-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <option value="">All Rarity</option>
+            <option value="L">Leader</option>
+            <option value="C">Common</option>
+            <option value="UC">Uncommon</option>
+            <option value="R">Rare</option>
+            <option value="SR">Super Rare</option>
+            <option value="SEC">Secret Rare</option>
+          </select>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 max-h-80 overflow-y-auto pr-2">
+        {filteredCards.map(card => (
+          <div
+            key={card.id}
+            className={`flex flex-col items-center p-2 border rounded-lg cursor-pointer transition-all duration-200
+                        ${selectedCards[card.id] ? 'border-blue-500 ring-2 ring-blue-500 bg-blue-50' : 'border-gray-200 hover:shadow-md'}`}
+            onClick={() => onSelectCard(card)}
+          >
+            <img src={card.image_url} alt={card.name} className="w-24 h-32 object-cover rounded-md mb-2" onError={(e) => e.target.src = 'https://placehold.co/150x200/cccccc/000000?text=Card+Image'} />
+            <p className="text-center text-sm font-semibold text-gray-800 truncate w-full">{card.name}</p>
+            <p className="text-center text-xs text-gray-500">{card.id}</p>
+            {selectedCards[card.id] && (
+              <p className="text-center text-sm font-bold text-blue-600 mt-1">
+                Selected: {selectedCards[card.id]}
+              </p>
+            )}
+          </div>
+        ))}
+      </div>
+    </Modal>
+  );
+};
+
+// --- Card Display Component ---
+const CardDisplay = ({ card, showDetails = false }) => {
+  if (!card) return null;
+  return (
+    <div className="bg-white rounded-lg shadow-md overflow-hidden flex flex-col items-center p-3">
+      <img
+        src={card.image_url}
+        alt={card.name}
+        className="w-full max-w-[150px] h-auto object-cover rounded-md mb-2"
+        onError={(e) => e.target.src = 'https://placehold.co/150x200/cccccc/000000?text=Card+Image'}
+      />
+      <h3 className="text-lg font-bold text-center text-gray-800">{card.name}</h3>
+      <p className="text-sm text-gray-600 text-center">{card.id} | {card.type}</p>
+      {showDetails && (
+        <div className="mt-2 text-sm text-gray-700 w-full">
+          <p><strong>Color:</strong> {card.colors.join(', ')}</p>
+          <p><strong>Cost:</strong> {card.cost}</p>
+          <p><strong>Power:</strong> {card.power}</p>
+          <p><strong>Counter:</strong> {card.counter}</p>
+          <p><strong>Rarity:</strong> {card.rarity}</p>
+          <p className="mt-2 text-xs italic">{card.effect_text}</p>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// --- Card Database Component ---
+const CardDatabase = () => {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filters, setFilters] = useState({ type: '', color: '', rarity: '' });
+  const [selectedCard, setSelectedCard] = useState(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  const filteredCards = sampleCards.filter(card => {
+    const matchesSearch = card.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          card.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          card.effect_text.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesType = filters.type ? card.type === filters.type : true;
+    const matchesColor = filters.color ? card.colors.includes(filters.color) : true;
+    const matchesRarity = filters.rarity ? card.rarity === filters.rarity : true;
+    return matchesSearch && matchesType && matchesColor && matchesRarity;
+  });
+
+  const handleFilterChange = (e) => {
+    setFilters({ ...filters, [e.target.name]: e.target.value });
+  };
+
+  const openCardDetails = (card) => {
+    setSelectedCard(card);
+    setIsModalOpen(true);
+  };
+
+  return (
+    <div className="p-4">
+      <h2 className="text-3xl font-bold text-gray-800 mb-6">Card Database</h2>
+      <div className="mb-6 bg-white p-4 rounded-lg shadow-md">
+        <input
+          type="text"
+          placeholder="Search cards by name, ID, or effect..."
+          className="p-3 border rounded-md w-full mb-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+        />
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+          <select name="type" value={filters.type} onChange={handleFilterChange} className="p-3 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <option value="">All Types</option>
+            <option value="Leader">Leader</option>
+            <option value="Character">Character</option>
+            <option value="Event">Event</option>
+            <option value="Stage">Stage</option>
+            <option value="DON!!">DON!!</option>
+          </select>
+          <select name="color" value={filters.color} onChange={handleFilterChange} className="p-3 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <option value="">All Colors</option>
+            <option value="Red">Red</option>
+            <option value="Green">Green</option>
+            <option value="Blue">Blue</option>
+            <option value="Purple">Purple</option>
+            <option value="Black">Black</option>
+            <option value="Yellow">Yellow</option>
+          </select>
+          <select name="rarity" value={filters.rarity} onChange={handleFilterChange} className="p-3 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <option value="">All Rarity</option>
+            <option value="L">Leader</option>
+            <option value="C">Common</option>
+            <option value="UC">Uncommon</option>
+            <option value="R">Rare</option>
+            <option value="SR">Super Rare</option>
+            <option value="SEC">Secret Rare</option>
+          </select>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+        {filteredCards.map(card => (
+          <div key={card.id} className="cursor-pointer" onClick={() => openCardDetails(card)}>
+            <CardDisplay card={card} />
+          </div>
+        ))}
+      </div>
+
+      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={selectedCard?.name || "Card Details"}>
+        <CardDisplay card={selectedCard} showDetails={true} />
+      </Modal>
+    </div>
+  );
+};
+
+// --- Deck Builder Component ---
+const DeckBuilder = () => {
+  const { db, userId, isAuthReady } = useContext(FirebaseContext);
+  const [decks, setDecks] = useState([]);
+  const [selectedDeck, setSelectedDeck] = useState(null);
+  const [isNewDeckModalOpen, setIsNewDeckModalOpen] = useState(false);
+  const [newDeckName, setNewDeckName] = useState('');
+  const [newDeckLeaderId, setNewDeckLeaderId] = useState('');
+  const [isCardPickerOpen, setIsCardPickerOpen] = useState(false);
+  const [currentDeckCards, setCurrentDeckCards] = useState({}); // { cardId: quantity }
+  const [deckVariations, setDeckVariations] = useState([]);
+  const [selectedVariation, setSelectedVariation] = useState(null);
+  const [isNewVariationModalOpen, setIsNewVariationModalOpen] = useState(false);
+  const [newVariationName, setNewVariationName] = useState('');
+  const [newVariationNotes, setNewVariationNotes] = useState('');
+  const [message, setMessage] = useState('');
+
+  const decksCollectionRef = collection(db, `artifacts/${__app_id}/users/${userId}/decks`);
+  const deckVariationsCollectionRef = collection(db, `artifacts/${__app_id}/users/${userId}/deckVariations`);
+
+  // Fetch decks
+  useEffect(() => {
+    if (!isAuthReady || !userId) return;
+
+    const q = query(decksCollectionRef);
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const fetchedDecks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setDecks(fetchedDecks);
+      if (selectedDeck && !fetchedDecks.some(d => d.id === selectedDeck.id)) {
+        setSelectedDeck(null); // Deselect if the deck was deleted
+      }
+    }, (error) => {
+      console.error("Error fetching decks:", error);
+      setMessage("Error loading decks.");
+    });
+
+    return () => unsubscribe();
+  }, [isAuthReady, userId, db]);
+
+  // Fetch variations for selected deck
+  useEffect(() => {
+    if (!selectedDeck?.id || !isAuthReady || !userId) {
+      setDeckVariations([]);
+      setSelectedVariation(null);
+      return;
+    }
+
+    const q = query(deckVariationsCollectionRef, where("baseDeckId", "==", selectedDeck.id));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const fetchedVariations = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setDeckVariations(fetchedVariations);
+      if (selectedVariation && !fetchedVariations.some(v => v.id === selectedVariation.id)) {
+        setSelectedVariation(null); // Deselect if variation was deleted
+      }
+    }, (error) => {
+      console.error("Error fetching deck variations:", error);
+      setMessage("Error loading deck variations.");
+    });
+
+    return () => unsubscribe();
+  }, [selectedDeck?.id, isAuthReady, userId, db]);
+
+  // Set current deck cards when selectedDeck or selectedVariation changes
+  useEffect(() => {
+    if (selectedVariation) {
+      setCurrentDeckCards(selectedVariation.mainDeckCards || {});
+    } else if (selectedDeck) {
+      setCurrentDeckCards(selectedDeck.mainDeckCards || {});
+    } else {
+      setCurrentDeckCards({});
+    }
+  }, [selectedDeck, selectedVariation]);
+
+  const handleCreateDeck = async () => {
+    if (!newDeckName || !newDeckLeaderId) {
+      setMessage("Please enter a deck name and select a leader.");
+      return;
+    }
+    if (!isAuthReady || !userId) {
+      setMessage("Authentication not ready. Please wait.");
+      return;
+    }
+
+    try {
+      const newDeckRef = await addDoc(decksCollectionRef, {
+        name: newDeckName,
+        leaderCardId: newDeckLeaderId,
+        mainDeckCards: {}, // Initialize as empty
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+      setMessage(`Deck "${newDeckName}" created!`);
+      setIsNewDeckModalOpen(false);
+      setNewDeckName('');
+      setNewDeckLeaderId('');
+      setSelectedDeck({ id: newDeckRef.id, name: newDeckName, leaderCardId: newDeckLeaderId, mainDeckCards: {} });
+      setSelectedVariation(null); // No variation selected initially
+    } catch (e) {
+      console.error("Error adding document: ", e);
+      setMessage("Failed to create deck.");
+    }
+  };
+
+  const handleSelectDeck = (deck) => {
+    setSelectedDeck(deck);
+    setSelectedVariation(null); // Reset variation when new base deck is selected
+  };
+
+  const handleSelectVariation = (variation) => {
+    setSelectedVariation(variation);
+  };
+
+  const handleAddCardToCurrentDeck = async (card) => {
+    const currentQuantity = currentDeckCards[card.id] || 0;
+    if (currentQuantity >= 4 && card.type !== 'DON!!') {
+      setMessage("Cannot add more than 4 copies of a non-DON!! card.");
+      return;
+    }
+    const updatedCards = { ...currentDeckCards, [card.id]: currentQuantity + 1 };
+    setCurrentDeckCards(updatedCards);
+
+    // Persist to Firestore
+    const targetRef = selectedVariation ? doc(deckVariationsCollectionRef, selectedVariation.id) : doc(decksCollectionRef, selectedDeck.id);
+    try {
+      await updateDoc(targetRef, {
+        mainDeckCards: updatedCards,
+        updatedAt: new Date().toISOString(),
+      });
+      setMessage(`Added ${card.name} to deck.`);
+    } catch (e) {
+      console.error("Error updating deck cards:", e);
+      setMessage("Failed to add card to deck.");
+    }
+  };
+
+  const handleRemoveCardFromCurrentDeck = async (cardId) => {
+    const currentQuantity = currentDeckCards[cardId] || 0;
+    if (currentQuantity <= 0) return;
+
+    const updatedCards = { ...currentDeckCards };
+    if (currentQuantity === 1) {
+      delete updatedCards[cardId];
+    } else {
+      updatedCards[cardId] = currentQuantity - 1;
+    }
+    setCurrentDeckCards(updatedCards);
+
+    // Persist to Firestore
+    const targetRef = selectedVariation ? doc(deckVariationsCollectionRef, selectedVariation.id) : doc(decksCollectionRef, selectedDeck.id);
+    try {
+      await updateDoc(targetRef, {
+        mainDeckCards: updatedCards,
+        updatedAt: new Date().toISOString(),
+      });
+      setMessage(`Removed card from deck.`);
+    } catch (e) {
+      console.error("Error updating deck cards:", e);
+      setMessage("Failed to remove card from deck.");
+    }
+  };
+
+  const handleDeleteDeck = async (deckId) => {
+    if (!window.confirm("Are you sure you want to delete this deck and all its variations?")) return;
+    try {
+      // Delete base deck
+      await deleteDoc(doc(decksCollectionRef, deckId));
+      // Delete all associated variations
+      const variationsToDeleteQuery = query(deckVariationsCollectionRef, where("baseDeckId", "==", deckId));
+      const snapshot = await getDocs(variationsToDeleteQuery);
+      snapshot.forEach(async (d) => {
+        await deleteDoc(d.ref);
+      });
+      setMessage("Deck and variations deleted successfully!");
+      setSelectedDeck(null);
+      setSelectedVariation(null);
+    } catch (e) {
+      console.error("Error deleting deck:", e);
+      setMessage("Failed to delete deck.");
+    }
+  };
+
+  const handleDeleteVariation = async (variationId) => {
+    if (!window.confirm("Are you sure you want to delete this deck variation?")) return;
+    try {
+      await deleteDoc(doc(deckVariationsCollectionRef, variationId));
+      setMessage("Deck variation deleted successfully!");
+      setSelectedVariation(null);
+    } catch (e) {
+      console.error("Error deleting variation:", e);
+      setMessage("Failed to delete variation.");
+    }
+  };
+
+  const handleCreateVariation = async () => {
+    if (!selectedDeck) {
+      setMessage("Please select a base deck first.");
+      return;
+    }
+    if (!newVariationName) {
+      setMessage("Please enter a variation name.");
+      return;
+    }
+    if (!isAuthReady || !userId) {
+      setMessage("Authentication not ready. Please wait.");
+      return;
+    }
+
+    try {
+      const newVariationRef = await addDoc(deckVariationsCollectionRef, {
+        baseDeckId: selectedDeck.id,
+        variationName: newVariationName,
+        mainDeckCards: currentDeckCards, // Copy current state of the base deck/variation
+        notes: newVariationNotes,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+      setMessage(`Variation "${newVariationName}" created!`);
+      setIsNewVariationModalOpen(false);
+      setNewVariationName('');
+      setNewVariationNotes('');
+      setSelectedVariation({ id: newVariationRef.id, baseDeckId: selectedDeck.id, variationName: newVariationName, mainDeckCards: currentDeckCards, notes: newVariationNotes });
+    } catch (e) {
+      console.error("Error adding variation: ", e);
+      setMessage("Failed to create variation.");
+    }
+  };
+
+  const currentDeckCardList = Object.entries(currentDeckCards)
+    .map(([cardId, quantity]) => ({ card: getCardById(cardId), quantity }))
+    .filter(item => item.card);
+
+  const totalCards = currentDeckCardList.reduce((sum, item) => sum + item.quantity, 0);
+  const leaderCard = getCardById(selectedDeck?.leaderCardId);
+
+  // Calculate deck statistics
+  const calculateDeckStats = () => {
+    const stats = {
+      costCurve: {},
+      colorDistribution: {},
+      typeDistribution: {},
+      totalPower: 0,
+      totalCounter: 0,
+      keywords: {},
+    };
+
+    currentDeckCardList.forEach(item => {
+      const card = item.card;
+      const quantity = item.quantity;
+
+      // Ensure card and its properties exist before accessing
+      if (card) {
+        // Cost Curve
+        stats.costCurve[card.cost] = (stats.costCurve[card.cost] || 0) + quantity;
+
+        // Color Distribution
+        if (card.colors) {
+          card.colors.forEach(color => {
+            stats.colorDistribution[color] = (stats.colorDistribution[color] || 0) + quantity;
+          });
+        }
+
+        // Type Distribution
+        stats.typeDistribution[card.type] = (stats.typeDistribution[card.type] || 0) + quantity;
+
+        // Total Power/Counter
+        stats.totalPower += (card.power || 0) * quantity;
+        stats.totalCounter += (card.counter || 0) * quantity;
+
+        // Keywords
+        if (card.keywords) {
+          card.keywords.forEach(keyword => {
+            stats.keywords[keyword] = (stats.keywords[keyword] || 0) + quantity;
+          });
+        }
+      }
+    });
+
+    return stats;
+  };
+
+  const deckStats = calculateDeckStats();
+
+  return (
+    <div className="p-4">
+      <h2 className="text-3xl font-bold text-gray-800 mb-6">Deck Builder</h2>
+      {message && <div className="bg-blue-100 border border-blue-400 text-blue-700 px-4 py-3 rounded relative mb-4" role="alert">{message}</div>}
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* Left Panel: Deck List */}
+        <div className="md:col-span-1 bg-white p-4 rounded-lg shadow-md">
+          <h3 className="text-xl font-semibold mb-4 text-gray-800">Your Decks</h3>
+          <button
+            onClick={() => { setIsNewDeckModalOpen(true); setMessage(''); }}
+            className="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg transition duration-300 mb-4 shadow-md"
+          >
+            Create New Deck
+          </button>
+          <ul className="space-y-2">
+            {decks.length === 0 && <p className="text-gray-500">No decks created yet.</p>}
+            {decks.map(deck => (
+              <li
+                key={deck.id}
+                className={`flex justify-between items-center p-3 border rounded-lg cursor-pointer transition-all duration-200
+                            ${selectedDeck?.id === deck.id ? 'bg-blue-100 border-blue-500' : 'hover:bg-gray-50'}`}
+                onClick={() => handleSelectDeck(deck)}
+              >
+                <span className="font-medium text-gray-700">{deck.name}</span>
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleDeleteDeck(deck.id); }}
+                  className="bg-red-500 hover:bg-red-600 text-white text-xs font-bold py-1 px-2 rounded-md transition duration-300"
+                >
+                  Delete
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        {/* Middle Panel: Current Deck Details */}
+        <div className="md:col-span-2 bg-white p-4 rounded-lg shadow-md">
+          {selectedDeck ? (
+            <>
+              <h3 className="text-xl font-semibold mb-2 text-gray-800">
+                {selectedDeck.name}
+                {selectedVariation && <span className="text-gray-500 text-lg"> ({selectedVariation.variationName})</span>}
+              </h3>
+              <p className="text-gray-600 mb-4">Leader: {leaderCard?.name || 'N/A'}</p>
+
+              <div className="flex flex-wrap gap-2 mb-4">
+                <button
+                  onClick={() => { setIsCardPickerOpen(true); setMessage(''); }}
+                  className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg transition duration-300 shadow-md"
+                >
+                  Add Card
+                </button>
+                <button
+                  onClick={() => { setIsNewVariationModalOpen(true); setMessage(''); }}
+                  className="bg-purple-500 hover:bg-purple-600 text-white font-bold py-2 px-4 rounded-lg transition duration-300 shadow-md"
+                >
+                  Create Variation
+                </button>
+              </div>
+
+              {/* Deck Variations */}
+              <div className="mb-6">
+                <h4 className="text-lg font-semibold text-gray-700 mb-2">Variations</h4>
+                <ul className="space-y-1">
+                  <li
+                    className={`flex justify-between items-center p-2 border rounded-lg cursor-pointer transition-all duration-200
+                                ${!selectedVariation ? 'bg-blue-100 border-blue-500' : 'hover:bg-gray-50'}`}
+                    onClick={() => setSelectedVariation(null)}
+                  >
+                    <span className="font-medium text-gray-700">Base Deck</span>
+                  </li>
+                  {deckVariations.length === 0 && <p className="text-gray-500 text-sm">No variations yet.</p>}
+                  {deckVariations.map(variation => (
+                    <li
+                      key={variation.id}
+                      className={`flex justify-between items-center p-2 border rounded-lg cursor-pointer transition-all duration-200
+                                  ${selectedVariation?.id === variation.id ? 'bg-blue-100 border-blue-500' : 'hover:bg-gray-50'}`}
+                      onClick={() => handleSelectVariation(variation)}
+                    >
+                      <span className="font-medium text-gray-700">{variation.variationName}</span>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleDeleteVariation(variation.id); }}
+                        className="bg-red-500 hover:bg-red-600 text-white text-xs font-bold py-1 px-2 rounded-md transition duration-300"
+                      >
+                        Delete
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              {/* Deck Card List */}
+              <h4 className="text-lg font-semibold text-gray-700 mb-2">Cards ({totalCards}/50)</h4>
+              <div className="max-h-80 overflow-y-auto border rounded-lg p-2 bg-gray-50">
+                {currentDeckCardList.length === 0 && <p className="text-gray-500 text-center py-4">No cards in this deck yet.</p>}
+                {currentDeckCardList
+                  .sort((a, b) => a.card.cost - b.card.cost || a.card.name.localeCompare(b.card.name))
+                  .map(item => (
+                    <div key={item.card.id} className="flex justify-between items-center p-2 border-b last:border-b-0">
+                      <span className="font-medium text-gray-700">{item.card.name} ({item.card.id})</span>
+                      <div className="flex items-center">
+                        <span className="mr-2 text-gray-600">x{item.quantity}</span>
+                        <button
+                          onClick={() => handleRemoveCardFromCurrentDeck(item.card.id)}
+                          className="bg-red-400 hover:bg-red-500 text-white text-xs font-bold py-1 px-2 rounded-md transition duration-300"
+                        >
+                          -
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+
+              {/* Deck Statistics */}
+              <div className="mt-6">
+                <h4 className="text-lg font-semibold text-gray-700 mb-2">Deck Statistics</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="bg-gray-50 p-3 rounded-lg">
+                    <h5 className="font-medium text-gray-700">Cost Curve</h5>
+                    {Object.entries(deckStats.costCurve).sort((a,b) => parseInt(a[0]) - parseInt(b[0])).map(([cost, count]) => (
+                      <p key={cost} className="text-sm text-gray-600">Cost {cost}: {count}</p>
+                    ))}
+                  </div>
+                  <div className="bg-gray-50 p-3 rounded-lg">
+                    <h5 className="font-medium text-gray-700">Color Distribution</h5>
+                    {Object.entries(deckStats.colorDistribution).map(([color, count]) => (
+                      <p key={color} className="text-sm text-gray-600">{color}: {count}</p>
+                    ))}
+                  </div>
+                  <div className="bg-gray-50 p-3 rounded-lg">
+                    <h5 className="font-medium text-gray-700">Type Distribution</h5>
+                    {Object.entries(deckStats.typeDistribution).map(([type, count]) => (
+                      <p key={type} className="text-sm text-gray-600">{type}: {count}</p>
+                    ))}
+                  </div>
+                  <div className="bg-gray-50 p-3 rounded-lg">
+                    <h5 className="font-medium text-gray-700">Keywords</h5>
+                    {Object.entries(deckStats.keywords).length === 0 && <p className="text-sm text-gray-600">No keywords found.</p>}
+                    {Object.entries(deckStats.keywords).map(([keyword, count]) => (
+                      <p key={keyword} className="text-sm text-gray-600">{keyword}: {count}</p>
+                    ))}
+                  </div>
+                  <div className="bg-gray-50 p-3 rounded-lg">
+                    <h5 className="font-medium text-gray-700">Total Power/Counter</h5>
+                    <p className="text-sm text-gray-600">Total Power: {deckStats.totalPower}</p>
+                    <p className="text-sm text-gray-600">Total Counter: {deckStats.totalCounter}</p>
+                  </div>
+                </div>
+              </div>
+            </>
+          ) : (
+            <p className="text-gray-600 text-center py-8">Select a deck from the left or create a new one.</p>
+          )}
+        </div>
+      </div>
+
+      {/* New Deck Modal */}
+      <Modal isOpen={isNewDeckModalOpen} onClose={() => setIsNewDeckModalOpen(false)} title="Create New Deck">
+        <div className="mb-4">
+          <label htmlFor="deckName" className="block text-gray-700 text-sm font-bold mb-2">Deck Name:</label>
+          <input
+            type="text"
+            id="deckName"
+            className="shadow appearance-none border rounded-lg w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
+            value={newDeckName}
+            onChange={(e) => setNewDeckName(e.target.value)}
+          />
+        </div>
+        <div className="mb-6">
+          <label htmlFor="leaderSelect" className="block text-gray-700 text-sm font-bold mb-2">Select Leader:</label>
+          <select
+            id="leaderSelect"
+            className="shadow border rounded-lg w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
+            value={newDeckLeaderId}
+            onChange={(e) => setNewDeckLeaderId(e.target.value)}
+          >
+            <option value="">-- Select a Leader --</option>
+            {getLeaderCards().map(leader => (
+              <option key={leader.id} value={leader.id}>{leader.name} ({leader.id})</option>
+            ))}
+          </select>
+        </div>
+        <button
+          onClick={handleCreateDeck}
+          className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg focus:outline-none focus:shadow-outline transition duration-300"
+        >
+          Create Deck
+        </button>
+      </Modal>
+
+      {/* New Variation Modal */}
+      <Modal isOpen={isNewVariationModalOpen} onClose={() => setIsNewVariationModalOpen(false)} title="Create New Deck Variation">
+        <div className="mb-4">
+          <label htmlFor="variationName" className="block text-gray-700 text-sm font-bold mb-2">Variation Name:</label>
+          <input
+            type="text"
+            id="variationName"
+            className="shadow appearance-none border rounded-lg w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
+            value={newVariationName}
+            onChange={(e) => setNewVariationName(e.target.value)}
+          />
+        </div>
+        <div className="mb-6">
+          <label htmlFor="variationNotes" className="block text-gray-700 text-sm font-bold mb-2">Notes (Optional):</label>
+          <textarea
+            id="variationNotes"
+            className="shadow appearance-none border rounded-lg w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
+            value={newVariationNotes}
+            onChange={(e) => setNewVariationNotes(e.target.value)}
+            rows="3"
+          ></textarea>
+        </div>
+        <button
+          onClick={handleCreateVariation}
+          className="bg-purple-500 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg focus:outline-none focus:shadow-outline transition duration-300"
+        >
+          Create Variation
+        </button>
+      </Modal>
+
+      {/* Card Picker Modal for adding cards to deck */}
+      <CardPickerModal
+        isOpen={isCardPickerOpen}
+        onClose={() => setIsCardPickerOpen(false)}
+        onSelectCard={handleAddCardToCurrentDeck}
+        selectedCards={currentDeckCards}
+      />
+    </div>
+  );
+};
+
+// --- Collection Tracker Component ---
+const CollectionTracker = () => {
+  const { db, userId, isAuthReady } = useContext(FirebaseContext);
+  const [collectionItems, setCollectionItems] = useState([]);
+  const [isCardPickerOpen, setIsCardPickerOpen] = useState(false);
+  const [message, setMessage] = useState('');
+
+  const collectionRef = collection(db, `artifacts/${__app_id}/users/${userId}/collection`);
+
+  // Fetch collection items
+  useEffect(() => {
+    if (!isAuthReady || !userId) return;
+
+    const q = query(collectionRef);
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const fetchedItems = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setCollectionItems(fetchedItems);
+    }, (error) => {
+      console.error("Error fetching collection:", error);
+      setMessage("Error loading collection.");
+    });
+
+    return () => unsubscribe();
+  }, [isAuthReady, userId, db]);
+
+  const handleAddCardToCollection = async (card) => {
+    if (!isAuthReady || !userId) {
+      setMessage("Authentication not ready. Please wait.");
+      return;
+    }
+    try {
+      const existingItemQuery = query(collectionRef, where("cardId", "==", card.id));
+      const existingItemSnapshot = await getDocs(existingItemQuery);
+
+      if (!existingItemSnapshot.empty) {
+        // Card already exists, update quantity
+        const existingDoc = existingItemSnapshot.docs[0];
+        const currentQuantity = existingDoc.data().quantityOwned || 0;
+        await updateDoc(doc(collectionRef, existingDoc.id), {
+          quantityOwned: currentQuantity + 1,
+          updatedAt: new Date().toISOString(),
+        });
+        setMessage(`Added another copy of ${card.name} to collection.`);
+      } else {
+        // Add new card to collection
+        await addDoc(collectionRef, {
+          cardId: card.id,
+          quantityOwned: 1,
+          variantType: "Regular", // Default
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        });
+        setMessage(`Added ${card.name} to collection.`);
+      }
+      setIsCardPickerOpen(false);
+    } catch (e) {
+      console.error("Error adding/updating collection item:", e);
+      setMessage("Failed to add card to collection.");
+    }
+  };
+
+  const handleRemoveCardFromCollection = async (itemId, currentQuantity) => {
+    if (!isAuthReady || !userId) {
+      setMessage("Authentication not ready. Please wait.");
+      return;
+    }
+    if (currentQuantity <= 0) return;
+
+    try {
+      if (currentQuantity === 1) {
+        // Delete item if quantity becomes 0
+        await deleteDoc(doc(collectionRef, itemId));
+        setMessage("Card removed from collection.");
+      } else {
+        // Decrement quantity
+        await updateDoc(doc(collectionRef, itemId), {
+          quantityOwned: currentQuantity - 1,
+          updatedAt: new Date().toISOString(),
+        });
+        setMessage("Removed one copy from collection.");
+      }
+    } catch (e) {
+      console.error("Error removing card from collection:", e);
+      setMessage("Failed to remove card from collection.");
+    }
+  };
+
+  const collectionCardList = collectionItems
+    .map(item => ({ ...item, card: getCardById(item.cardId) }))
+    .filter(item => item.card);
+
+  return (
+    <div className="p-4">
+      <h2 className="text-3xl font-bold text-gray-800 mb-6">Collection Tracker</h2>
+      {message && <div className="bg-blue-100 border border-blue-400 text-blue-700 px-4 py-3 rounded relative mb-4" role="alert">{message}</div>}
+
+      <button
+        onClick={() => { setIsCardPickerOpen(true); setMessage(''); }}
+        className="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg transition duration-300 mb-6 shadow-md"
+      >
+        Add Card to Collection
+      </button>
+
+      <div className="bg-white p-4 rounded-lg shadow-md">
+        <h3 className="text-xl font-semibold mb-4 text-gray-800">Your Cards ({collectionCardList.reduce((sum, item) => sum + item.quantityOwned, 0)} total)</h3>
+        <div className="max-h-[60vh] overflow-y-auto border rounded-lg p-2 bg-gray-50">
+          {collectionCardList.length === 0 && <p className="text-gray-500 text-center py-4">Your collection is empty.</p>}
+          {collectionCardList
+            .sort((a, b) => a.card.name.localeCompare(b.card.name))
+            .map(item => (
+              <div key={item.id} className="flex justify-between items-center p-2 border-b last:border-b-0">
+                <div className="flex items-center">
+                  <img src={item.card.image_url} alt={item.card.name} className="w-12 h-16 object-cover rounded-md mr-3" onError={(e) => e.target.src = 'https://placehold.co/150x200/cccccc/000000?text=Card+Image'} />
+                  <div>
+                    <span className="font-medium text-gray-700">{item.card.name} ({item.card.id})</span>
+                    {item.variantType && item.variantType !== "Regular" && <span className="text-sm text-gray-500 ml-2">({item.variantType})</span>}
+                  </div>
+                </div>
+                <div className="flex items-center">
+                  <span className="mr-2 text-gray-600">x{item.quantityOwned}</span>
+                  <button
+                    onClick={() => handleRemoveCardFromCollection(item.id, item.quantityOwned)}
+                    className="bg-red-400 hover:bg-red-500 text-white text-xs font-bold py-1 px-2 rounded-md transition duration-300"
+                  >
+                    -
+                  </button>
+                </div>
+              </div>
+            ))}
+        </div>
+      </div>
+
+      <CardPickerModal
+        isOpen={isCardPickerOpen}
+        onClose={() => setIsCardPickerOpen(false)}
+        onSelectCard={handleAddCardToCollection}
+      />
+    </div>
+  );
+};
+
+// --- Trade/Sell Manager Component ---
+const TradeSellManager = () => {
+  const { db, userId, isAuthReady } = useContext(FirebaseContext);
+  const [transactions, setTransactions] = useState([]);
+  const [isLogModalOpen, setIsLogModalOpen] = useState(false);
+  const [transactionType, setTransactionType] = useState('Buy');
+  const [counterparty, setCounterparty] = useState('');
+  const [monetaryValue, setMonetaryValue] = useState('');
+  const [notes, setNotes] = useState('');
+  const [cardsGiven, setCardsGiven] = useState({}); // { cardId: quantity }
+  const [cardsReceived, setCardsReceived] = useState({}); // { cardId: quantity }
+  const [currentPickerTarget, setCurrentPickerTarget] = useState(null); // 'given' or 'received'
+  const [isCardPickerOpen, setIsCardPickerOpen] = useState(false);
+  const [message, setMessage] = useState('');
+
+  const transactionsCollectionRef = collection(db, `artifacts/${__app_id}/users/${userId}/transactions`);
+  const collectionRef = collection(db, `artifacts/${__app_id}/users/${userId}/collection`);
+
+  // Fetch transactions
+  useEffect(() => {
+    if (!isAuthReady || !userId) return;
+
+    const q = query(transactionsCollectionRef);
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const fetchedTransactions = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setTransactions(fetchedTransactions.sort((a, b) => new Date(b.date) - new Date(a.date))); // Sort by date desc
+    }, (error) => {
+      console.error("Error fetching transactions:", error);
+      setMessage("Error loading transactions.");
+    });
+
+    return () => unsubscribe();
+  }, [isAuthReady, userId, db]);
+
+  const resetForm = () => {
+    setTransactionType('Buy');
+    setCounterparty('');
+    setMonetaryValue('');
+    setNotes('');
+    setCardsGiven({});
+    setCardsReceived({});
+    setCurrentPickerTarget(null);
+    setMessage('');
+  };
+
+  const handleLogTransaction = async () => {
+    if (!isAuthReady || !userId) {
+      setMessage("Authentication not ready. Please wait.");
+      return;
+    }
+    if (!transactionType) {
+      setMessage("Please select a transaction type.");
+      return;
+    }
+
+    try {
+      const newTransaction = {
+        date: new Date().toISOString(),
+        type: transactionType,
+        counterparty: counterparty || 'N/A',
+        monetaryValue: parseFloat(monetaryValue) || 0,
+        notes: notes,
+        cardsGiven: cardsGiven,
+        cardsReceived: cardsReceived,
+      };
+
+      await addDoc(transactionsCollectionRef, newTransaction);
+
+      // Update collection based on transaction
+      for (const cardId in cardsReceived) {
+        const quantity = cardsReceived[cardId];
+        const existingItemQuery = query(collectionRef, where("cardId", "==", cardId));
+        const existingItemSnapshot = await getDocs(existingItemQuery);
+
+        if (!existingItemSnapshot.empty) {
+          const existingDoc = existingItemSnapshot.docs[0];
+          const currentQuantity = existingDoc.data().quantityOwned || 0;
+          await updateDoc(doc(collectionRef, existingDoc.id), {
+            quantityOwned: currentQuantity + quantity,
+            updatedAt: new Date().toISOString(),
+          });
+        } else {
+          await addDoc(collectionRef, {
+            cardId: cardId,
+            quantityOwned: quantity,
+            variantType: "Regular",
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          });
+        }
+      }
+
+      for (const cardId in cardsGiven) {
+        const quantity = cardsGiven[cardId];
+        const existingItemQuery = query(collectionRef, where("cardId", "==", cardId));
+        const existingItemSnapshot = await getDocs(existingItemQuery);
+
+        if (!existingItemSnapshot.empty) {
+          const existingDoc = existingItemSnapshot.docs[0];
+          const currentQuantity = existingDoc.data().quantityOwned || 0;
+          const newQuantity = Math.max(0, currentQuantity - quantity);
+          if (newQuantity === 0) {
+            await deleteDoc(doc(collectionRef, existingDoc.id));
+          } else {
+            await updateDoc(doc(collectionRef, existingDoc.id), {
+              quantityOwned: newQuantity,
+              updatedAt: new Date().toISOString(),
+            });
+          }
+        }
+      }
+
+      setMessage("Transaction logged and collection updated!");
+      setIsLogModalOpen(false);
+      resetForm();
+    } catch (e) {
+      console.error("Error logging transaction:", e);
+      setMessage("Failed to log transaction.");
+    }
+  };
+
+  const handleSelectCardForTransaction = (card) => {
+    if (currentPickerTarget === 'given') {
+      setCardsGiven(prev => ({ ...prev, [card.id]: (prev[card.id] || 0) + 1 }));
+    } else if (currentPickerTarget === 'received') {
+      setCardsReceived(prev => ({ ...prev, [card.id]: (prev[card.id] || 0) + 1 }));
+    }
+  };
+
+  const handleRemoveCardFromTransaction = (cardId, target) => {
+    if (target === 'given') {
+      setCardsGiven(prev => {
+        const newCards = { ...prev };
+        if (newCards[cardId] > 1) {
+          newCards[cardId]--;
+        } else {
+          delete newCards[cardId];
+        }
+        return newCards;
+      });
+    } else if (target === 'received') {
+      setCardsReceived(prev => {
+        const newCards = { ...prev };
+        if (newCards[cardId] > 1) {
+          newCards[cardId]--;
+        } else {
+          delete newCards[cardId];
+        }
+        return newCards;
+      });
+    }
+  };
+
+  const renderCardList = (cardMap, target) => (
+    <div className="border rounded-lg p-2 bg-gray-50 max-h-40 overflow-y-auto">
+      {Object.entries(cardMap).length === 0 && <p className="text-gray-500 text-sm">No cards added.</p>}
+      {Object.entries(cardMap).map(([cardId, quantity]) => {
+        const card = getCardById(cardId);
+        return card ? (
+          <div key={cardId} className="flex justify-between items-center p-1 border-b last:border-b-0">
+            <span className="text-sm text-gray-700">{card.name}</span>
+            <div className="flex items-center">
+              <span className="text-sm mr-2">x{quantity}</span>
+              <button
+                onClick={() => handleRemoveCardFromTransaction(cardId, target)}
+                className="bg-red-400 hover:bg-red-500 text-white text-xs font-bold py-0.5 px-1 rounded-md"
+              >
+                -
+              </button>
+            </div>
+          </div>
+        ) : null;
+      })}
+    </div>
+  );
+
+  return (
+    <div className="p-4">
+      <h2 className="text-3xl font-bold text-gray-800 mb-6">Trade/Sell Log</h2>
+      {message && <div className="bg-blue-100 border border-blue-400 text-blue-700 px-4 py-3 rounded relative mb-4" role="alert">{message}</div>}
+
+      <button
+        onClick={() => { setIsLogModalOpen(true); resetForm(); }}
+        className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg transition duration-300 mb-6 shadow-md"
+      >
+        Log New Transaction
+      </button>
+
+      <div className="bg-white p-4 rounded-lg shadow-md">
+        <h3 className="text-xl font-semibold mb-4 text-gray-800">Transaction History</h3>
+        <div className="max-h-[60vh] overflow-y-auto border rounded-lg p-2 bg-gray-50">
+          {transactions.length === 0 && <p className="text-gray-500 text-center py-4">No transactions logged yet.</p>}
+          {transactions.map(tx => (
+            <div key={tx.id} className="p-3 border-b last:border-b-0">
+              <p className="font-bold text-gray-800">{new Date(tx.date).toLocaleDateString()} - {tx.type}</p>
+              <p className="text-sm text-gray-700">Counterparty: {tx.counterparty}</p>
+              {tx.monetaryValue > 0 && <p className="text-sm text-gray-700">Value: ${tx.monetaryValue.toFixed(2)}</p>}
+              {tx.notes && <p className="text-sm italic text-gray-600">Notes: {tx.notes}</p>}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2 text-sm">
+                <div>
+                  <p className="font-semibold">Cards Given:</p>
+                  {Object.entries(tx.cardsGiven).map(([cardId, quantity]) => {
+                    const card = getCardById(cardId);
+                    return card ? <p key={cardId} className="text-gray-600 ml-2">{card.name} x{quantity}</p> : null;
+                  })}
+                </div>
+                <div>
+                  <p className="font-semibold">Cards Received:</p>
+                  {Object.entries(tx.cardsReceived).map(([cardId, quantity]) => {
+                    const card = getCardById(cardId);
+                    return card ? <p key={cardId} className="text-gray-600 ml-2">{card.name} x{quantity}</p> : null;
+                  })}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <Modal isOpen={isLogModalOpen} onClose={() => setIsLogModalOpen(false)} title="Log New Transaction">
+        {message && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4" role="alert">{message}</div>}
+        <div className="mb-4">
+          <label htmlFor="txType" className="block text-gray-700 text-sm font-bold mb-2">Transaction Type:</label>
+          <select
+            id="txType"
+            className="shadow border rounded-lg w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
+            value={transactionType}
+            onChange={(e) => setTransactionType(e.target.value)}
+          >
+            <option value="Buy">Buy</option>
+            <option value="Sell">Sell</option>
+            <option value="Trade">Trade</option>
+            <option value="Give Away">Give Away</option>
+            <option value="Receive">Receive</option>
+          </select>
+        </div>
+        <div className="mb-4">
+          <label htmlFor="counterparty" className="block text-gray-700 text-sm font-bold mb-2">Counterparty (Optional):</label>
+          <input
+            type="text"
+            id="counterparty"
+            className="shadow appearance-none border rounded-lg w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
+            value={counterparty}
+            onChange={(e) => setCounterparty(e.target.value)}
+          />
+        </div>
+        {(transactionType === 'Buy' || transactionType === 'Sell') && (
+          <div className="mb-4">
+            <label htmlFor="monetaryValue" className="block text-gray-700 text-sm font-bold mb-2">Monetary Value ($):</label>
+            <input
+              type="number"
+              id="monetaryValue"
+              className="shadow appearance-none border rounded-lg w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
+              value={monetaryValue}
+              onChange={(e) => setMonetaryValue(e.target.value)}
+              step="0.01"
+            />
+          </div>
+        )}
+        <div className="mb-4">
+          <label htmlFor="txNotes" className="block text-gray-700 text-sm font-bold mb-2">Notes (Optional):</label>
+          <textarea
+            id="txNotes"
+            className="shadow appearance-none border rounded-lg w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            rows="2"
+          ></textarea>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+          <div>
+            <h4 className="font-bold text-gray-700 mb-2">Cards Given:</h4>
+            <button
+              onClick={() => { setCurrentPickerTarget('given'); setIsCardPickerOpen(true); }}
+              className="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-1 px-3 rounded-lg text-sm mb-2"
+            >
+              Add Card
+            </button>
+            {renderCardList(cardsGiven, 'given')}
+          </div>
+          <div>
+            <h4 className="font-bold text-gray-700 mb-2">Cards Received:</h4>
+            <button
+              onClick={() => { setCurrentPickerTarget('received'); setIsCardPickerOpen(true); }}
+              className="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-1 px-3 rounded-lg text-sm mb-2"
+            >
+              Add Card
+            </button>
+            {renderCardList(cardsReceived, 'received')}
+          </div>
+        </div>
+
+        <button
+          onClick={handleLogTransaction}
+          className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg focus:outline-none focus:shadow-outline transition duration-300"
+        >
+          Log Transaction
+        </button>
+      </Modal>
+
+      <CardPickerModal
+        isOpen={isCardPickerOpen}
+        onClose={() => setIsCardPickerOpen(false)}
+        onSelectCard={handleSelectCardForTransaction}
+        selectedCards={currentPickerTarget === 'given' ? cardsGiven : cardsReceived}
+      />
+    </div>
+  );
+};
+
+
+// --- Match Tracker Component ---
+const MatchTracker = () => {
+  const { db, userId, isAuthReady } = useContext(FirebaseContext);
+  const [matches, setMatches] = useState([]);
+  const [decks, setDecks] = useState([]); // All base decks
+  const [deckVariations, setDeckVariations] = useState([]); // All variations
+  const [sessions, setSessions] = useState([]); // All match sessions
+  const [isLogModalOpen, setIsLogModalOpen] = useState(false);
+  const [isNewSessionModalOpen, setIsNewSessionModalOpen] = useState(false);
+
+  const [selectedDeckIdForMatch, setSelectedDeckIdForMatch] = useState('');
+  const [selectedVariationIdForMatch, setSelectedVariationIdForMatch] = useState('');
+  const [selectedSessionIdForMatch, setSelectedSessionIdForMatch] = useState('');
+  const [newSessionName, setNewSessionName] = useState('');
+  const [opponentLeaderId, setOpponentLeaderId] = useState('');
+  const [outcome, setOutcome] = useState('Win');
+  const [dieRollOutcome, setDieRollOutcome] = useState(''); // Win/Loss
+  const [playOrder, setPlayOrder] = useState(''); // First/Second
+  const [matchNotes, setMatchNotes] = useState('');
+  const [message, setMessage] = useState('');
+
+  const matchesCollectionRef = collection(db, `artifacts/${__app_id}/users/${userId}/matches`);
+  const decksCollectionRef = collection(db, `artifacts/${__app_id}/users/${userId}/decks`);
+  const deckVariationsCollectionRef = collection(db, `artifacts/${__app_id}/users/${userId}/deckVariations`);
+  const matchSessionsCollectionRef = collection(db, `artifacts/${__app_id}/users/${userId}/matchSessions`);
+
+
+  // Fetch all decks, variations, and sessions
+  useEffect(() => {
+    if (!isAuthReady || !userId) return;
+
+    const unsubscribeDecks = onSnapshot(query(decksCollectionRef), (snapshot) => {
+      setDecks(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (error) => {
+      console.error("Error fetching decks for match tracker:", error);
+    });
+
+    const unsubscribeVariations = onSnapshot(query(deckVariationsCollectionRef), (snapshot) => {
+      setDeckVariations(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (error) => {
+      console.error("Error fetching variations for match tracker:", error);
+    });
+
+    const unsubscribeSessions = onSnapshot(query(matchSessionsCollectionRef), (snapshot) => {
+      setSessions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).sort((a,b) => new Date(b.date) - new Date(a.date)));
+    }, (error) => {
+      console.error("Error fetching sessions:", error);
+    });
+
+    return () => {
+      unsubscribeDecks();
+      unsubscribeVariations();
+      unsubscribeSessions();
+    };
+  }, [isAuthReady, userId, db]);
+
+  // Fetch matches
+  useEffect(() => {
+    if (!isAuthReady || !userId) return;
+
+    const q = query(matchesCollectionRef);
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const fetchedMatches = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setMatches(fetchedMatches.sort((a, b) => new Date(b.date) - new Date(a.date))); // Sort by date desc
+    }, (error) => {
+      console.error("Error fetching matches:", error);
+      setMessage("Error loading matches.");
+    });
+
+    return () => unsubscribe();
+  }, [isAuthReady, userId, db]);
+
+  const resetForm = () => {
+    setSelectedDeckIdForMatch('');
+    setSelectedVariationIdForMatch('');
+    setSelectedSessionIdForMatch('');
+    setNewSessionName('');
+    setOpponentLeaderId('');
+    setOutcome('Win');
+    setDieRollOutcome('');
+    setPlayOrder('');
+    setMatchNotes('');
+    setMessage('');
+  };
+
+  const handleCreateSession = async () => {
+    if (!newSessionName) {
+      setMessage("Please enter a session name.");
+      return;
+    }
+    if (!isAuthReady || !userId) {
+      setMessage("Authentication not ready. Please wait.");
+      return;
+    }
+
+    try {
+      const newSessionRef = await addDoc(matchSessionsCollectionRef, {
+        name: newSessionName,
+        date: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+      });
+      setMessage(`Session "${newSessionName}" created!`);
+      setIsNewSessionModalOpen(false);
+      setNewSessionName('');
+      setSelectedSessionIdForMatch(newSessionRef.id); // Automatically select the new session
+    } catch (e) {
+      console.error("Error creating session:", e);
+      setMessage("Failed to create session.");
+    }
+  };
+
+  const handleLogMatch = async () => {
+    if (!isAuthReady || !userId) {
+      setMessage("Authentication not ready. Please wait.");
+      return;
+    }
+    if (!selectedDeckIdForMatch && !selectedVariationIdForMatch) {
+      setMessage("Please select a deck or deck variation used.");
+      return;
+    }
+    if (!opponentLeaderId) {
+      setMessage("Please select opponent's leader.");
+      return;
+    }
+
+    try {
+      await addDoc(matchesCollectionRef, {
+        date: new Date().toISOString(),
+        deckVariationIdUsed: selectedVariationIdForMatch || selectedDeckIdForMatch, // Use variation if selected, else base deck
+        opponentLeaderCardId: opponentLeaderId,
+        outcome: outcome,
+        sessionId: selectedSessionIdForMatch || null, // Link to session
+        dieRollOutcome: dieRollOutcome || null,
+        playOrder: playOrder || null,
+        notes: matchNotes,
+      });
+      setMessage("Match logged successfully!");
+      setIsLogModalOpen(false);
+      resetForm();
+    } catch (e) {
+      console.error("Error logging match:", e);
+      setMessage("Failed to log match.");
+    }
+  };
+
+  // Calculate statistics
+  const calculateStats = useCallback(() => {
+    const stats = {
+      overallWinRate: 'N/A',
+      deckVariationStats: {}, // { variationId: { wins: X, total: Y, winRate: Z% }, ... }
+      matchupStats: {}, // { userVariationId: { opponentLeaderId: { wins: X, total: Y, winRate: Z% }, ... }, ... }
+      sessionStats: {}, // { sessionId: { totalMatches: X, wins: Y, winRate: Z% }, ... }
+    };
+
+    if (matches.length === 0) return stats;
+
+    let totalWins = 0;
+    matches.forEach(match => {
+      if (match.outcome === 'Win') {
+        totalWins++;
+      }
+
+      const deckUsedId = match.deckVariationIdUsed;
+      if (!stats.deckVariationStats[deckUsedId]) {
+        stats.deckVariationStats[deckUsedId] = { wins: 0, total: 0, winRate: '0%' };
+      }
+      stats.deckVariationStats[deckUsedId].total++;
+      if (match.outcome === 'Win') {
+        stats.deckVariationStats[deckUsedId].wins++;
+      }
+
+      const opponentLeader = match.opponentLeaderCardId;
+      if (!stats.matchupStats[deckUsedId]) {
+        stats.matchupStats[deckUsedId] = {};
+      }
+      if (!stats.matchupStats[deckUsedId][opponentLeader]) {
+        stats.matchupStats[deckUsedId][opponentLeader] = { wins: 0, total: 0, winRate: '0%' };
+      }
+      stats.matchupStats[deckUsedId][opponentLeader].total++;
+      if (match.outcome === 'Win') {
+        stats.matchupStats[deckUsedId][opponentLeader].wins++;
+      }
+
+      const sessionId = match.sessionId;
+      if (sessionId) {
+        if (!stats.sessionStats[sessionId]) {
+          stats.sessionStats[sessionId] = { totalMatches: 0, wins: 0, winRate: '0%' };
+        }
+        stats.sessionStats[sessionId].totalMatches++;
+        if (match.outcome === 'Win') {
+          stats.sessionStats[sessionId].wins++;
+        }
+      }
+    });
+
+    stats.overallWinRate = `${((totalWins / matches.length) * 100).toFixed(1)}%`;
+
+    for (const varId in stats.deckVariationStats) {
+      const { wins, total } = stats.deckVariationStats[varId];
+      stats.deckVariationStats[varId].winRate = `${((wins / total) * 100).toFixed(1)}%`;
+    }
+
+    for (const userVarId in stats.matchupStats) {
+      for (const oppLeaderId in stats.matchupStats[userVarId]) {
+        const { wins, total } = stats.matchupStats[userVarId][oppLeaderId];
+        stats.matchupStats[userVarId][oppLeaderId].winRate = `${((wins / total) * 100).toFixed(1)}%`;
+      }
+    }
+
+    for (const sId in stats.sessionStats) {
+      const { wins, totalMatches } = stats.sessionStats[sId];
+      stats.sessionStats[sId].winRate = `${((wins / totalMatches) * 100).toFixed(1)}%`;
+    }
+
+    return stats;
+  }, [matches]);
+
+  const currentStats = calculateStats();
+
+  const getDeckOrVariationName = (id) => {
+    const variation = deckVariations.find(v => v.id === id);
+    if (variation) {
+      const baseDeck = decks.find(d => d.id === variation.baseDeckId);
+      return `${baseDeck?.name || 'Unknown Deck'} (${variation.variationName})`;
+    }
+    const baseDeck = decks.find(d => d.id === id);
+    return baseDeck?.name || 'Unknown Deck';
+  };
+
+  const getOpponentLeaderName = (id) => {
+    const leader = getCardById(id);
+    return leader?.name || 'Unknown Leader';
+  };
+
+  const getSessionName = (id) => {
+    const session = sessions.find(s => s.id === id);
+    return session?.name || 'No Session';
+  };
+
+  const availableVariationsForSelectedDeck = selectedDeckIdForMatch
+    ? deckVariations.filter(v => v.baseDeckId === selectedDeckIdForMatch)
+    : [];
+
+  return (
+    <div className="p-4">
+      <h2 className="text-3xl font-bold text-gray-800 mb-6">Match Tracker</h2>
+      {message && <div className="bg-blue-100 border border-blue-400 text-blue-700 px-4 py-3 rounded relative mb-4" role="alert">{message}</div>}
+
+      <div className="flex flex-wrap gap-4 mb-6">
+        <button
+          onClick={() => { setIsLogModalOpen(true); resetForm(); }}
+          className="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg transition duration-300 shadow-md flex-grow"
+        >
+          Log New Match
+        </button>
+        <button
+          onClick={() => { setIsNewSessionModalOpen(true); setNewSessionName(''); setMessage(''); }}
+          className="bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg transition duration-300 shadow-md flex-grow"
+        >
+          Create New Session
+        </button>
+      </div>
+
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+        {/* Overall Stats */}
+        <div className="bg-white p-4 rounded-lg shadow-md">
+          <h3 className="text-xl font-semibold mb-4 text-gray-800">Overall Statistics</h3>
+          <p className="text-lg">Total Matches: <span className="font-bold">{matches.length}</span></p>
+          <p className="text-lg">Overall Win Rate: <span className="font-bold text-blue-600">{currentStats.overallWinRate}</span></p>
+        </div>
+
+        {/* Deck Variation Stats */}
+        <div className="bg-white p-4 rounded-lg shadow-md">
+          <h3 className="text-xl font-semibold mb-4 text-gray-800">Deck Variation Performance</h3>
+          {Object.entries(currentStats.deckVariationStats).length === 0 && <p className="text-gray-500">No data available. Log some matches!</p>}
+          <div className="max-h-48 overflow-y-auto">
+            {Object.entries(currentStats.deckVariationStats).map(([id, data]) => (
+              <p key={id} className="text-gray-700 text-sm mb-1">
+                <span className="font-medium">{getDeckOrVariationName(id)}:</span> {data.wins}/{data.total} ({data.winRate})
+              </p>
+            ))}
+          </div>
+        </div>
+
+        {/* Session Stats */}
+        <div className="bg-white p-4 rounded-lg shadow-md md:col-span-2">
+          <h3 className="text-xl font-semibold mb-4 text-gray-800">Session Performance</h3>
+          {sessions.length === 0 && <p className="text-gray-500">No sessions created yet.</p>}
+          <div className="max-h-48 overflow-y-auto">
+            {sessions.map(session => {
+              const sessionData = currentStats.sessionStats[session.id] || { totalMatches: 0, wins: 0, winRate: '0%' };
+              return (
+                <div key={session.id} className="p-2 border-b last:border-b-0">
+                  <p className="font-bold text-gray-700">{session.name} ({new Date(session.date).toLocaleDateString()})</p>
+                  <p className="text-sm text-gray-600">Matches: {sessionData.totalMatches}, Wins: {sessionData.wins}, Win Rate: {sessionData.winRate}</p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* Match History */}
+      <div className="bg-white p-4 rounded-lg shadow-md">
+        <h3 className="text-xl font-semibold mb-4 text-gray-800">Match History</h3>
+        <div className="max-h-[50vh] overflow-y-auto border rounded-lg p-2 bg-gray-50">
+          {matches.length === 0 && <p className="text-gray-500 text-center py-4">No matches logged yet.</p>}
+          {matches.map(match => (
+            <div key={match.id} className="p-3 border-b last:border-b-0">
+              <p className="font-bold text-gray-800">{new Date(match.date).toLocaleDateString()} - {new Date(match.date).toLocaleTimeString()}</p>
+              {match.sessionId && (
+                <p className="text-sm text-gray-600">Session: <span className="font-medium">{getSessionName(match.sessionId)}</span></p>
+              )}
+              <p className="text-md text-gray-700">
+                Deck Used: <span className="font-medium">{getDeckOrVariationName(match.deckVariationIdUsed)}</span>
+              </p>
+              <p className="text-md text-gray-700">
+                Opponent: <span className="font-medium">{getOpponentLeaderName(match.opponentLeaderCardId)}</span>
+              </p>
+              <p className={`text-md font-bold ${match.outcome === 'Win' ? 'text-green-600' : match.outcome === 'Loss' ? 'text-red-600' : 'text-gray-600'}`}>
+                Outcome: {match.outcome}
+              </p>
+              {match.dieRollOutcome && <p className="text-sm text-gray-600">Die Roll: {match.dieRollOutcome}</p>}
+              {match.playOrder && <p className="text-sm text-gray-600">Play Order: {match.playOrder}</p>}
+              {match.notes && <p className="text-sm italic text-gray-600">Notes: {match.notes}</p>}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* New Match Modal */}
+      <Modal isOpen={isLogModalOpen} onClose={() => setIsLogModalOpen(false)} title="Log New Match">
+        {message && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4" role="alert">{message}</div>}
+        <div className="mb-4">
+          <label htmlFor="matchSession" className="block text-gray-700 text-sm font-bold mb-2">Session (Optional):</label>
+          <select
+            id="matchSession"
+            className="shadow border rounded-lg w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
+            value={selectedSessionIdForMatch}
+            onChange={(e) => setSelectedSessionIdForMatch(e.target.value)}
+          >
+            <option value="">-- No Session --</option>
+            {sessions.map(session => (
+              <option key={session.id} value={session.id}>{session.name} ({new Date(session.date).toLocaleDateString()})</option>
+            ))}
+          </select>
+        </div>
+        <div className="mb-4">
+          <label htmlFor="deckUsed" className="block text-gray-700 text-sm font-bold mb-2">Your Deck:</label>
+          <select
+            id="deckUsed"
+            className="shadow border rounded-lg w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500 mb-2"
+            value={selectedDeckIdForMatch}
+            onChange={(e) => {
+              setSelectedDeckIdForMatch(e.target.value);
+              setSelectedVariationIdForMatch(''); // Reset variation when base deck changes
+            }}
+          >
+            <option value="">-- Select a Base Deck --</option>
+            {decks.map(deck => (
+              <option key={deck.id} value={deck.id}>{deck.name}</option>
+            ))}
+          </select>
+          {selectedDeckIdForMatch && (
+            <select
+              id="variationUsed"
+              className="shadow border rounded-lg w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
+              value={selectedVariationIdForMatch}
+              onChange={(e) => setSelectedVariationIdForMatch(e.target.value)}
+            >
+              <option value="">-- Select a Variation (or Base Deck) --</option>
+              <option value={selectedDeckIdForMatch}>Base Deck</option> {/* Option to use base deck itself */}
+              {availableVariationsForSelectedDeck.map(variation => (
+                <option key={variation.id} value={variation.id}>{variation.variationName}</option>
+              ))}
+            </select>
+          )}
+        </div>
+        <div className="mb-4">
+          <label htmlFor="opponentLeader" className="block text-gray-700 text-sm font-bold mb-2">Opponent's Leader:</label>
+          <select
+            id="opponentLeader"
+            className="shadow border rounded-lg w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
+            value={opponentLeaderId}
+            onChange={(e) => setOpponentLeaderId(e.target.value)}
+          >
+            <option value="">-- Select Opponent's Leader --</option>
+            {getLeaderCards().map(leader => (
+              <option key={leader.id} value={leader.id}>{leader.name} ({leader.id})</option>
+            ))}
+          </select>
+        </div>
+        <div className="mb-4">
+          <label htmlFor="outcome" className="block text-gray-700 text-sm font-bold mb-2">Outcome:</label>
+          <select
+            id="outcome"
+            className="shadow border rounded-lg w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
+            value={outcome}
+            onChange={(e) => setOutcome(e.target.value)}
+          >
+            <option value="Win">Win</option>
+            <option value="Loss">Loss</option>
+            <option value="Draw">Draw</option>
+          </select>
+        </div>
+        <div className="mb-4">
+          <label className="block text-gray-700 text-sm font-bold mb-2">Die Roll Outcome:</label>
+          <div className="flex gap-4">
+            <label className="inline-flex items-center">
+              <input type="radio" className="form-radio text-blue-600" name="dieRoll" value="Win" checked={dieRollOutcome === 'Win'} onChange={(e) => setDieRollOutcome(e.target.value)} />
+              <span className="ml-2 text-gray-700">Win</span>
+            </label>
+            <label className="inline-flex items-center">
+              <input type="radio" className="form-radio text-blue-600" name="dieRoll" value="Loss" checked={dieRollOutcome === 'Loss'} onChange={(e) => setDieRollOutcome(e.target.value)} />
+              <span className="ml-2 text-gray-700">Loss</span>
+            </label>
+            <label className="inline-flex items-center">
+              <input type="radio" className="form-radio text-blue-600" name="dieRoll" value="" checked={dieRollOutcome === ''} onChange={(e) => setDieRollOutcome(e.target.value)} />
+              <span className="ml-2 text-gray-700">N/A</span>
+            </label>
+          </div>
+        </div>
+        <div className="mb-6">
+          <label className="block text-gray-700 text-sm font-bold mb-2">Play Order:</label>
+          <div className="flex gap-4">
+            <label className="inline-flex items-center">
+              <input type="radio" className="form-radio text-blue-600" name="playOrder" value="First" checked={playOrder === 'First'} onChange={(e) => setPlayOrder(e.target.value)} />
+              <span className="ml-2 text-gray-700">First</span>
+            </label>
+            <label className="inline-flex items-center">
+              <input type="radio" className="form-radio text-blue-600" name="playOrder" value="Second" checked={playOrder === 'Second'} onChange={(e) => setPlayOrder(e.target.value)} />
+              <span className="ml-2 text-gray-700">Second</span>
+            </label>
+            <label className="inline-flex items-center">
+              <input type="radio" className="form-radio text-blue-600" name="playOrder" value="" checked={playOrder === ''} onChange={(e) => setPlayOrder(e.target.value)} />
+              <span className="ml-2 text-gray-700">N/A</span>
+            </label>
+          </div>
+        </div>
+        <div className="mb-6">
+          <label htmlFor="matchNotes" className="block text-gray-700 text-sm font-bold mb-2">Notes (Optional):</label>
+          <textarea
+            id="matchNotes"
+            className="shadow appearance-none border rounded-lg w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
+            value={matchNotes}
+            onChange={(e) => setMatchNotes(e.target.value)}
+            rows="3"
+          ></textarea>
+        </div>
+        <button
+          onClick={handleLogMatch}
+          className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg focus:outline-none focus:shadow-outline transition duration-300"
+        >
+          Log Match
+        </button>
+      </Modal>
+
+      {/* New Session Modal */}
+      <Modal isOpen={isNewSessionModalOpen} onClose={() => setIsNewSessionModalOpen(false)} title="Create New Session">
+        <div className="mb-4">
+          <label htmlFor="sessionName" className="block text-gray-700 text-sm font-bold mb-2">Session Name:</label>
+          <input
+            type="text"
+            id="sessionName"
+            className="shadow appearance-none border rounded-lg w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
+            value={newSessionName}
+            onChange={(e) => setNewSessionName(e.target.value)}
+          />
+        </div>
+        <button
+          onClick={handleCreateSession}
+          className="bg-indigo-500 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg focus:outline-none focus:shadow-outline transition duration-300"
+        >
+          Create Session
+        </button>
+      </Modal>
+    </div>
+  );
+};
+
+
+// --- Main App Component ---
+const App = () => {
+  const [db, setDb] = useState(null);
+  const [auth, setAuth] = useState(null);
+  const [userId, setUserId] = useState(null);
+  const [isAuthReady, setIsAuthReady] = useState(false);
+  const [activeTab, setActiveTab] = useState('cardDatabase'); // Default active tab
+
+  useEffect(() => {
+    // Initialize Firebase
+    const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+    const app = initializeApp(firebaseConfig);
+    const firestore = getFirestore(app);
+    const firebaseAuth = getAuth(app);
+
+    setDb(firestore);
+    setAuth(firebaseAuth);
+
+    // Authenticate user
+    const authenticate = async () => {
+      try {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(firebaseAuth, __initial_auth_token);
+        } else {
+          await signInAnonymously(firebaseAuth);
+        }
+      } catch (error) {
+        console.error("Firebase authentication error:", error);
+      }
+    };
+
+    authenticate();
+
+    // Listen for auth state changes
+    const unsubscribe = onAuthStateChanged(firebaseAuth, (user) => {
+      if (user) {
+        setUserId(user.uid);
+      } else {
+        setUserId(crypto.randomUUID()); // Fallback to a random ID if not authenticated
+      }
+      setIsAuthReady(true);
+    });
+
+    return () => unsubscribe(); // Cleanup auth listener
+  }, []);
+
+  if (!isAuthReady) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gray-100">
+        <div className="text-xl font-semibold text-gray-700">Loading app...</div>
+      </div>
+    );
+  }
+
+  return (
+    <FirebaseContext.Provider value={{ db, auth, userId, isAuthReady }}>
+      <div className="min-h-screen bg-gray-100 font-inter">
+        {/* Tailwind CSS CDN */}
+        <script src="https://cdn.tailwindcss.com"></script>
+        {/* Inter font from Google Fonts */}
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+        <style>
+          {`
+            body { font-family: 'Inter', sans-serif; }
+            /* Custom scrollbar for better aesthetics */
+            ::-webkit-scrollbar {
+              width: 8px;
+              height: 8px;
+            }
+            ::-webkit-scrollbar-track {
+              background: #f1f1f1;
+              border-radius: 10px;
+            }
+            ::-webkit-scrollbar-thumb {
+              background: #888;
+              border-radius: 10px;
+            }
+            ::-webkit-scrollbar-thumb:hover {
+              background: #555;
+            }
+          `}
+        </style>
+
+        {/* Header and Navigation */}
+        <header className="bg-blue-700 text-white p-4 shadow-md">
+          <div className="container mx-auto flex flex-col sm:flex-row justify-between items-center">
+            <h1 className="text-2xl font-bold mb-2 sm:mb-0">One Piece TCG App</h1>
+            <nav>
+              <ul className="flex flex-wrap justify-center sm:space-x-4 space-x-2">
+                <li>
+                  <button
+                    onClick={() => setActiveTab('cardDatabase')}
+                    className={`px-3 py-2 rounded-lg transition duration-300 ${activeTab === 'cardDatabase' ? 'bg-blue-800' : 'hover:bg-blue-600'}`}
+                  >
+                    Card Database
+                  </button>
+                </li>
+                <li>
+                  <button
+                    onClick={() => setActiveTab('deckBuilder')}
+                    className={`px-3 py-2 rounded-lg transition duration-300 ${activeTab === 'deckBuilder' ? 'bg-blue-800' : 'hover:bg-blue-600'}`}
+                  >
+                    Deck Builder
+                  </button>
+                </li>
+                <li>
+                  <button
+                    onClick={() => setActiveTab('collectionTracker')}
+                    className={`px-3 py-2 rounded-lg transition duration-300 ${activeTab === 'collectionTracker' ? 'bg-blue-800' : 'hover:bg-blue-600'}`}
+                  >
+                    Collection
+                  </button>
+                </li>
+                <li>
+                  <button
+                    onClick={() => setActiveTab('tradeSellManager')}
+                    className={`px-3 py-2 rounded-lg transition duration-300 ${activeTab === 'tradeSellManager' ? 'bg-blue-800' : 'hover:bg-blue-600'}`}
+                  >
+                    Trade/Sell Log
+                  </button>
+                </li>
+                <li>
+                  <button
+                    onClick={() => setActiveTab('matchTracker')}
+                    className={`px-3 py-2 rounded-lg transition duration-300 ${activeTab === 'matchTracker' ? 'bg-blue-800' : 'hover:bg-blue-600'}`}
+                  >
+                    Match Tracker
+                  </button>
+                </li>
+              </ul>
+            </nav>
+          </div>
+        </header>
+
+        <main className="container mx-auto py-6">
+          <div className="bg-white p-4 rounded-lg shadow-md mb-6 text-gray-700">
+            <p className="text-sm">
+              <span className="font-bold">Your User ID:</span> <span className="break-all">{userId}</span>
+              <br/>
+              This ID identifies your data in the app. All your data is stored privately for your user ID.
+            </p>
+          </div>
+
+          {activeTab === 'cardDatabase' && <CardDatabase />}
+          {activeTab === 'deckBuilder' && <DeckBuilder />}
+          {activeTab === 'collectionTracker' && <CollectionTracker />}
+          {activeTab === 'tradeSellManager' && <TradeSellManager />}
+          {activeTab === 'matchTracker' && <MatchTracker />}
+        </main>
+      </div>
+    </FirebaseContext.Provider>
+  );
+};
+
+export default App;
